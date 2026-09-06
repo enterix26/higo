@@ -184,7 +184,7 @@ function getStoredOverrides(): Record<string, Partial<Member>> {
 export async function syncWithServer(): Promise<Record<string, Partial<Member>>> {
   try {
     const res = await fetch('/api/members/overrides');
-    if (res.ok) {
+    if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
       const serverData = await res.json();
       if (serverData && typeof serverData === 'object') {
         cachedOverrides = serverData;

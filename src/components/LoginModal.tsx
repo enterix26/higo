@@ -40,7 +40,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
         body: JSON.stringify({ id: trimmed, password }),
       });
 
-      if (res.ok) {
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
         const data = await res.json();
         if (data.success) {
           await syncWithServer();
@@ -52,7 +52,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
           setIsLoading(false);
           return;
         }
-      } else if (res.status === 401 || res.status === 404 || res.status === 400) {
+      } else if ((res.status === 401 || res.status === 404 || res.status === 400) && res.headers.get('content-type')?.includes('application/json')) {
         const data = await res.json().catch(() => ({}));
         setErrorMsg(data.error || '아이디 또는 비밀번호가 일치하지 않습니다.');
         setIsLoading(false);
