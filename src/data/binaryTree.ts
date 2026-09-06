@@ -160,27 +160,79 @@ function generateDeterministicInfo(index: number) {
 }
 
 /**
- * In-memory map of overrides saved to localStorage
+ * In-memory map of overrides with server synchronization
  */
-function getStoredOverrides(): Record<string, Partial<Member>> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
-  } catch {
-    return {};
+let cachedOverrides: Record<string, Partial<Member>> = {};
+
+// Load initial overrides from localStorage if available
+try {
+  const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+  if (raw) {
+    cachedOverrides = JSON.parse(raw);
   }
+} catch {
+  cachedOverrides = {};
+}
+
+function getStoredOverrides(): Record<string, Partial<Member>> {
+  return cachedOverrides;
+}
+
+/**
+ * Fetch latest member overrides from server and update local cache
+ */
+export async function syncWithServer(): Promise<Record<string, Partial<Member>>> {
+  try {
+    const res = await fetch('/api/members/overrides');
+    if (res.ok) {
+      const serverData = await res.json();
+      if (serverData && typeof serverData === 'object') {
+        cachedOverrides = serverData;
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedOverrides));
+          window.dispatchEvent(new CustomEvent('higo_data_synced', { detail: cachedOverrides }));
+        }
+        return cachedOverrides;
+      }
+    }
+  } catch (err) {
+    // If offline or dev mode starting, safely fallback to local cache
+    console.warn('[DataSync] Using local cached overrides (server unreachable)', err);
+  }
+  return cachedOverrides;
+}
+
+// Initial sync and visibility sync
+if (typeof window !== 'undefined') {
+  syncWithServer();
+  window.addEventListener('focus', () => {
+    syncWithServer();
+  });
 }
 
 export function saveMemberOverride(id: string, updates: Partial<Member>): void {
   try {
-    const current = getStoredOverrides();
-    current[id] = {
-      ...(current[id] || {}),
+    const cleanId = id.toLowerCase();
+    const current = {
+      ...(cachedOverrides[cleanId] || {}),
       ...updates,
       updatedAt: new Date().toISOString(),
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+    cachedOverrides[cleanId] = current;
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedOverrides));
+      window.dispatchEvent(new CustomEvent('higo_data_updated', { detail: { id: cleanId, override: current } }));
+    }
+
+    // Send update to Express server in background
+    fetch(`/api/members/${cleanId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch((err) => {
+      console.warn('[DataSync] Failed to persist override to server', err);
+    });
   } catch (e) {
     console.error('Failed to save override', e);
   }
@@ -188,7 +240,16 @@ export function saveMemberOverride(id: string, updates: Partial<Member>): void {
 
 export function resetAllOverrides(): void {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    cachedOverrides = {};
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(STORAGE_KEY);
+      window.dispatchEvent(new CustomEvent('higo_data_synced', { detail: {} }));
+    }
+
+    // Reset on Express server
+    fetch('/api/admin/reset-all', { method: 'POST' }).catch((err) => {
+      console.warn('[DataSync] Failed to reset server overrides', err);
+    });
   } catch (e) {
     console.error('Failed to reset overrides', e);
   }
@@ -199,18 +260,23 @@ export function resetAllOverrides(): void {
  */
 export function resetAllSales(): void {
   try {
-    const current = getStoredOverrides();
     let modified = false;
-    for (const key of Object.keys(current)) {
-      if (current[key] && current[key].sales !== 0) {
-        current[key].sales = 0;
-        current[key].updatedAt = new Date().toISOString();
+    for (const key of Object.keys(cachedOverrides)) {
+      if (cachedOverrides[key] && cachedOverrides[key].sales !== 0) {
+        cachedOverrides[key].sales = 0;
+        cachedOverrides[key].updatedAt = new Date().toISOString();
         modified = true;
       }
     }
-    if (modified) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
+    if (modified && typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedOverrides));
+      window.dispatchEvent(new CustomEvent('higo_data_synced', { detail: cachedOverrides }));
     }
+
+    // Send reset to Express server
+    fetch('/api/admin/reset-sales', { method: 'POST' }).catch((err) => {
+      console.warn('[DataSync] Failed to reset server sales', err);
+    });
   } catch (e) {
     console.error('Failed to reset sales', e);
   }

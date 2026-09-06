@@ -5,7 +5,8 @@ import {
   getMemberByIndex, 
   calculateDownlineStats, 
   TOTAL_ACCOUNTS,
-  formatId
+  formatId,
+  syncWithServer
 } from './data/binaryTree';
 import { Navbar } from './components/Navbar';
 import { LoginModal } from './components/LoginModal';
@@ -17,14 +18,24 @@ import { MemberDetailModal } from './components/MemberDetailModal';
 import { AdminTools } from './components/AdminTools';
 
 export default function App() {
-  const [currentUserId, setCurrentUserId] = useState<string | null>('a01');
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem('higo_current_user_id');
+      if (saved) return saved;
+    }
+    return 'a01';
+  });
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => currentUserId === 'admin');
   const [activeTab, setActiveTab] = useState<'overview' | 'tree' | 'table'>('overview');
   const [tableLegFilter, setTableLegFilter] = useState<'ALL' | 'LEFT' | 'RIGHT'>('ALL');
   
   // Active member data
-  const [currentMember, setCurrentMember] = useState<Member | null>(() => getMemberById('a01'));
-  const [downlineStats, setDownlineStats] = useState<DownlineStats | null>(() => calculateDownlineStats(1));
+  const [currentMember, setCurrentMember] = useState<Member | null>(() => currentUserId ? getMemberById(currentUserId) : null);
+  const [downlineStats, setDownlineStats] = useState<DownlineStats | null>(() => {
+    if (!currentUserId) return null;
+    const m = getMemberById(currentUserId);
+    return m ? calculateDownlineStats(m.index) : null;
+  });
   
   // Modal for editing any clicked member
   const [inspectingMember, setInspectingMember] = useState<Member | null>(null);
@@ -60,7 +71,36 @@ export default function App() {
     refreshMemberData();
   }, [refreshMemberData]);
 
+  // Listen for data updates and sync with server periodically
+  useEffect(() => {
+    const handleDataEvent = () => {
+      refreshMemberData();
+    };
+
+    window.addEventListener('higo_data_updated', handleDataEvent);
+    window.addEventListener('higo_data_synced', handleDataEvent);
+
+    // Initial server sync
+    syncWithServer().then(() => {
+      refreshMemberData();
+    });
+
+    // Periodic sync every 10 seconds to keep all browsers in sync
+    const interval = setInterval(() => {
+      syncWithServer();
+    }, 10000);
+
+    return () => {
+      window.removeEventListener('higo_data_updated', handleDataEvent);
+      window.removeEventListener('higo_data_synced', handleDataEvent);
+      clearInterval(interval);
+    };
+  }, [refreshMemberData]);
+
   const handleLoginSuccess = (id: string) => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('higo_current_user_id', id);
+    }
     if (id === 'admin') {
       setIsAdmin(true);
       setCurrentUserId('admin');
@@ -72,6 +112,9 @@ export default function App() {
   };
 
   const handleSwitchUser = (id: string) => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('higo_current_user_id', id);
+    }
     if (id === 'admin') {
       setIsAdmin(true);
       setCurrentUserId('admin');
@@ -81,6 +124,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem('higo_current_user_id');
+    }
     setCurrentUserId(null);
     setIsAdmin(false);
     setCurrentMember(null);

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { parseId, formatId, TOTAL_ACCOUNTS, getMemberByIndex } from '../data/binaryTree';
+import { parseId, formatId, TOTAL_ACCOUNTS, getMemberByIndex, syncWithServer } from '../data/binaryTree';
 import { 
   LogIn, 
   User, 
   KeyRound, 
   Eye, 
-  EyeOff 
+  EyeOff,
+  Loader2
 } from 'lucide-react';
 
 interface LoginModalProps {
@@ -13,12 +14,13 @@ interface LoginModalProps {
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
-  const [userIdInput, setUserIdInput] = useState('a01');
+  const [userIdInput, setUserIdInput] = useState('');
   const [password, setPassword] = useState('1234');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -28,9 +30,43 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
       return;
     }
 
+    setIsLoading(true);
+
+    try {
+      // 1. Try server-side authentication
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: trimmed, password }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          await syncWithServer();
+          setIsLoading(false);
+          onLoginSuccess(data.memberId);
+          return;
+        } else {
+          setErrorMsg(data.error || '로그인에 실패했습니다.');
+          setIsLoading(false);
+          return;
+        }
+      } else if (res.status === 401 || res.status === 404 || res.status === 400) {
+        const data = await res.json().catch(() => ({}));
+        setErrorMsg(data.error || '아이디 또는 비밀번호가 일치하지 않습니다.');
+        setIsLoading(false);
+        return;
+      }
+    } catch {
+      // Network or offline fallback: check locally
+    }
+
+    // 2. Client-side fallback authentication
     const parsed = parseId(trimmed);
     if (parsed === null) {
-      setErrorMsg(`유효하지 않은 계정입니다. (a01 ~ a${TOTAL_ACCOUNTS} 또는 admin)`);
+      setErrorMsg(`유효하지 않은 계정입니다. (a01 ~ a${TOTAL_ACCOUNTS} 또는 등록된 HiGoID)`);
+      setIsLoading(false);
       return;
     }
 
@@ -38,16 +74,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
       // admin login
       if (password !== 'admin' && password !== '1234') {
         setErrorMsg('관리자 비밀번호가 일치하지 않습니다. (기본: 1234 또는 admin)');
+        setIsLoading(false);
         return;
       }
+      setIsLoading(false);
       onLoginSuccess('admin');
     } else {
       const member = getMemberByIndex(parsed);
       const expectedPassword = member?.password || '1234';
       if (password !== expectedPassword) {
         setErrorMsg('비밀번호가 일치하지 않습니다.');
+        setIsLoading(false);
         return;
       }
+      setIsLoading(false);
       onLoginSuccess(formatId(parsed));
     }
   };
@@ -137,10 +177,20 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
             <button
               id="btn-submit-login"
               type="submit"
-              className="w-full py-2.5 px-4 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all focus:ring-1 focus:ring-indigo-500 mt-2"
+              disabled={isLoading}
+              className="w-full py-2.5 px-4 rounded bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition-all focus:ring-1 focus:ring-indigo-500 mt-2"
             >
-              <LogIn className="w-3.5 h-3.5" />
-              <span>로그인 및 정보 조회</span>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>로그인 확인 중...</span>
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>로그인 및 정보 조회</span>
+                </>
+              )}
             </button>
           </form>
 

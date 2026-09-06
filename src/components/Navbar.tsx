@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Member } from '../types';
 import { formatId, parseId, TOTAL_ACCOUNTS } from '../data/binaryTree';
 import { 
@@ -7,7 +7,12 @@ import {
   LogOut, 
   Search, 
   ShieldCheck, 
-  GitFork
+  GitFork,
+  Globe,
+  Server,
+  Copy,
+  Check,
+  X
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -29,6 +34,15 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const [searchIdInput, setSearchIdInput] = useState('');
   const [searchError, setSearchError] = useState(false);
+  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
+  const [serverOnline, setServerOnline] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then((res) => res.ok ? setServerOnline(true) : setServerOnline(false))
+      .catch(() => setServerOnline(false));
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,6 +59,23 @@ export const Navbar: React.FC<NavbarProps> = ({
     } else {
       setSearchError(true);
       setTimeout(() => setSearchError(false), 2500);
+    }
+  };
+
+  const getWebAccessUrl = () => {
+    if (typeof window !== 'undefined') {
+      return window.location.origin;
+    }
+    return '';
+  };
+
+  const handleCopyUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(getWebAccessUrl());
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2500);
+    } catch {
+      // fallback
     }
   };
 
@@ -132,6 +163,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
         </form>
 
+        {/* Server & Web Access Status Button */}
+        <button
+          id="btn-server-access-info"
+          onClick={() => setIsServerModalOpen(true)}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 transition-colors"
+          title="서버 접속 및 회원 공유 안내"
+        >
+          <span className={`w-2 h-2 rounded-full ${serverOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+          <Server className="w-3.5 h-3.5 text-indigo-400" />
+          <span className="hidden sm:inline font-medium text-[11px]">서버 연동</span>
+        </button>
+
         {/* User Info Label & Avatar (High Density styling) */}
         <div className="flex items-center gap-2 sm:gap-3">
           <div className="flex flex-col items-end leading-tight">
@@ -181,6 +224,99 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
       </div>
+
+      {/* Server Access & Sharing Info Modal */}
+      {isServerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl shadow-2xl max-w-md w-full p-5 text-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400">
+                  <Server className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">서버 연결 및 웹 접속 안내</h3>
+                  <p className="text-[11px] text-slate-400">실시간 데이터베이스 및 회원 개별 브라우저 접속</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsServerModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              {/* Status */}
+              <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/80 border border-slate-700/80">
+                <span className="text-slate-300 font-medium">서버 구동 상태:</span>
+                <span className="flex items-center gap-1.5 font-bold text-emerald-400 font-mono">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  {serverOnline ? '정상 운영 중 (Port 3000)' : '연결 확인 중'}
+                </span>
+              </div>
+
+              {/* Web URL to share */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 mb-1.5">
+                  회원 브라우저 접속 웹 주소:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={getWebAccessUrl()}
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded px-2.5 py-1.5 text-xs text-indigo-300 font-mono select-all focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button
+                    onClick={handleCopyUrl}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-medium transition-colors text-xs"
+                  >
+                    {isCopied ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>복사됨!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>URL 복사</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  위 주소를 회원들에게 전달하면 각자 스마트폰 및 PC 브라우저로 접속할 수 있습니다.
+                </p>
+              </div>
+
+              {/* How Members Use */}
+              <div className="p-3 rounded-lg bg-indigo-950/30 border border-indigo-800/40 text-slate-300 space-y-1.5">
+                <div className="font-bold text-indigo-300 flex items-center gap-1">
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>회원 개별 로그인 & 정보 관리 안내</span>
+                </div>
+                <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300">
+                  <li><strong>로그인:</strong> 부여받은 계정 ID(예: <span className="font-mono text-indigo-200">a01 ~ a10000</span>) 또는 등록된 <span className="text-indigo-200 font-bold">HiGoID</span>와 비밀번호(기본: <span className="font-mono">1234</span>) 입력</li>
+                  <li><strong>정보 열람:</strong> 자신의 산하 바이너리 조직도, 좌/우측 인원 및 합계 매출 실시간 확인</li>
+                  <li><strong>정보 수정:</strong> 상단 [개인정보 수정]에서 이름, 연락처, 비밀번호, 본인 매출, HiGoID를 직접 수정 가능</li>
+                  <li><strong>실시간 동기화:</strong> 각 회원이 수정한 정보는 서버에 즉시 영구 저장되며, 다른 모든 회원과 관리자 화면에 실시간 반영됩니다.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => setIsServerModalOpen(false)}
+                className="px-4 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors"
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </header>
   );
