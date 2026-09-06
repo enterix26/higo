@@ -1,0 +1,50 @@
+{
+  "entities": {
+    "MemberOverride": {
+      "title": "MemberOverride",
+      "description": "Custom member profile overrides including contact, password, sales, and HiGoID",
+      "type": "object",
+      "properties": {
+        "memberId": {
+          "type": "string",
+          "description": "The unique member identifier like a01"
+        },
+        "name": {
+          "type": "string",
+          "description": "Member display name"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Member contact phone number"
+        },
+        "password": {
+          "type": "string",
+          "description": "Member login password"
+        },
+        "sales": {
+          "type": "number",
+          "description": "Member personal sales amount in KRW"
+        },
+        "higoId": {
+          "type": "string",
+          "description": "Custom HiGoID set by the member"
+        },
+        "memo": {
+          "type": "string",
+          "description": "Member memo or notes"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "ISO timestamp of last update"
+        }
+      },
+      "required": ["memberId"]
+    }
+  },
+  "firestore": {
+    "/members/{memberId}": {
+      "schema": "MemberOverride",
+      "description": "Collection of member profile overrides synchronized across all devices"
+    }
+  }
+}

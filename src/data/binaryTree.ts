@@ -1,4 +1,6 @@
 import { Member, DownlineStats, DownlineMemberItem } from '../types';
+import { collection, doc, setDoc, getDocs, onSnapshot, writeBatch, deleteDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 
 export const TOTAL_ACCOUNTS = 10000;
 const STORAGE_KEY = 'higo_member_overrides_v1';
@@ -179,15 +181,89 @@ function getStoredOverrides(): Record<string, Partial<Member>> {
 }
 
 /**
+ * Fetch latest member overrides from Firestore cloud database
+ */
+export async function syncWithFirestore(): Promise<Record<string, Partial<Member>>> {
+  try {
+    const snap = await getDocs(collection(db, 'members'));
+    let changed = false;
+    snap.forEach((d) => {
+      const id = d.id.toLowerCase();
+      const data = d.data() as Partial<Member>;
+      cachedOverrides[id] = {
+        ...(cachedOverrides[id] || {}),
+        ...data,
+      };
+      changed = true;
+    });
+
+    if (changed && typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedOverrides));
+      window.dispatchEvent(new CustomEvent('higo_data_synced', { detail: cachedOverrides }));
+    }
+  } catch (err) {
+    console.warn('[Firestore] Failed to sync with cloud database:', err);
+  }
+  return cachedOverrides;
+}
+
+let isFirestoreListenerAttached = false;
+export function initFirestoreRealtimeSync(): void {
+  if (typeof window === 'undefined' || isFirestoreListenerAttached) return;
+  try {
+    isFirestoreListenerAttached = true;
+    onSnapshot(
+      collection(db, 'members'),
+      (snapshot) => {
+        let changed = false;
+        snapshot.docChanges().forEach((change) => {
+          const id = change.doc.id.toLowerCase();
+          if (change.type === 'removed') {
+            if (cachedOverrides[id]) {
+              delete cachedOverrides[id];
+              changed = true;
+            }
+          } else {
+            const data = change.doc.data() as Partial<Member>;
+            cachedOverrides[id] = {
+              ...(cachedOverrides[id] || {}),
+              ...data,
+            };
+            changed = true;
+          }
+        });
+
+        if (changed) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedOverrides));
+          window.dispatchEvent(new CustomEvent('higo_data_synced', { detail: cachedOverrides }));
+        }
+      },
+      (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'members');
+      }
+    );
+  } catch (err) {
+    console.warn('[Firestore] Failed to attach real-time listener:', err);
+  }
+}
+
+/**
  * Fetch latest member overrides from server and update local cache
  */
 export async function syncWithServer(): Promise<Record<string, Partial<Member>>> {
   try {
+    // 1. Primary: sync with Firebase Firestore cloud database
+    await syncWithFirestore();
+
+    // 2. Secondary: sync with local Express server if running
     const res = await fetch('/api/members/overrides');
     if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
       const serverData = await res.json();
       if (serverData && typeof serverData === 'object') {
-        cachedOverrides = serverData;
+        cachedOverrides = {
+          ...cachedOverrides,
+          ...serverData,
+        };
         if (typeof window !== 'undefined') {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedOverrides));
           window.dispatchEvent(new CustomEvent('higo_data_synced', { detail: cachedOverrides }));
@@ -196,16 +272,19 @@ export async function syncWithServer(): Promise<Record<string, Partial<Member>>>
       }
     }
   } catch (err) {
-    // If offline or dev mode starting, safely fallback to local cache
-    console.warn('[DataSync] Using local cached overrides (server unreachable)', err);
+    // Safely fallback to cached overrides
+    console.warn('[DataSync] Using local/Firestore cached overrides', err);
   }
   return cachedOverrides;
 }
 
 // Initial sync and visibility sync
 if (typeof window !== 'undefined') {
+  syncWithFirestore();
+  initFirestoreRealtimeSync();
   syncWithServer();
   window.addEventListener('focus', () => {
+    syncWithFirestore();
     syncWithServer();
   });
 }
@@ -225,13 +304,33 @@ export function saveMemberOverride(id: string, updates: Partial<Member>): void {
       window.dispatchEvent(new CustomEvent('higo_data_updated', { detail: { id: cleanId, override: current } }));
     }
 
-    // Send update to Express server in background
+    // 1. Save directly to Firebase Firestore
+    try {
+      const firestorePayload: Record<string, unknown> = {
+        memberId: cleanId,
+        updatedAt: current.updatedAt,
+      };
+      if (current.name !== undefined) firestorePayload.name = current.name;
+      if (current.phone !== undefined) firestorePayload.phone = current.phone;
+      if (current.password !== undefined) firestorePayload.password = current.password;
+      if (current.sales !== undefined) firestorePayload.sales = Number(current.sales) || 0;
+      if (current.higoId !== undefined) firestorePayload.higoId = current.higoId;
+      if (current.memo !== undefined) firestorePayload.memo = current.memo;
+
+      setDoc(doc(db, 'members', cleanId), firestorePayload, { merge: true }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, `members/${cleanId}`);
+      });
+    } catch (fsErr) {
+      console.warn('[Firestore] Error initiating save to Firestore:', fsErr);
+    }
+
+    // 2. Also send update to Express server in background
     fetch(`/api/members/${cleanId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates),
     }).catch((err) => {
-      console.warn('[DataSync] Failed to persist override to server', err);
+      console.warn('[DataSync] Failed to persist override to Express server', err);
     });
   } catch (e) {
     console.error('Failed to save override', e);
@@ -240,10 +339,24 @@ export function saveMemberOverride(id: string, updates: Partial<Member>): void {
 
 export function resetAllOverrides(): void {
   try {
+    const keys = Object.keys(cachedOverrides);
     cachedOverrides = {};
     if (typeof window !== 'undefined') {
       localStorage.removeItem(STORAGE_KEY);
       window.dispatchEvent(new CustomEvent('higo_data_synced', { detail: {} }));
+    }
+
+    // Delete in Firestore
+    try {
+      const batch = writeBatch(db);
+      for (const k of keys) {
+        batch.delete(doc(db, 'members', k));
+      }
+      batch.commit().catch((err) => {
+        console.warn('[Firestore] Batch delete error:', err);
+      });
+    } catch (fsErr) {
+      console.warn('[Firestore] Error batch deleting from Firestore:', fsErr);
     }
 
     // Reset on Express server
@@ -261,16 +374,28 @@ export function resetAllOverrides(): void {
 export function resetAllSales(): void {
   try {
     let modified = false;
+    const batch = writeBatch(db);
+    let batchCount = 0;
+
     for (const key of Object.keys(cachedOverrides)) {
       if (cachedOverrides[key] && cachedOverrides[key].sales !== 0) {
         cachedOverrides[key].sales = 0;
         cachedOverrides[key].updatedAt = new Date().toISOString();
         modified = true;
+
+        batch.set(doc(db, 'members', key), { sales: 0, updatedAt: new Date().toISOString() }, { merge: true });
+        batchCount++;
       }
     }
     if (modified && typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(cachedOverrides));
       window.dispatchEvent(new CustomEvent('higo_data_synced', { detail: cachedOverrides }));
+    }
+
+    if (batchCount > 0) {
+      batch.commit().catch((err) => {
+        console.warn('[Firestore] Batch reset sales error:', err);
+      });
     }
 
     // Send reset to Express server

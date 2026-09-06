@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { parseId, formatId, TOTAL_ACCOUNTS, getMemberByIndex, syncWithServer } from '../data/binaryTree';
+import { parseId, formatId, TOTAL_ACCOUNTS, getMemberByIndex, syncWithServer, syncWithFirestore } from '../data/binaryTree';
 import { 
   LogIn, 
   User, 
@@ -62,7 +62,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ onLoginSuccess }) => {
       // Network or offline fallback: check locally
     }
 
-    // 2. Client-side fallback authentication
+    // 2. Client-side authentication synced with Firestore
+    await syncWithFirestore().catch(() => {});
     const parsed = parseId(trimmed);
     if (parsed === null) {
       setErrorMsg(`유효하지 않은 계정입니다. (a01 ~ a${TOTAL_ACCOUNTS} 또는 등록된 HiGoID)`);
