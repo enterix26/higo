@@ -23,7 +23,7 @@ export default function App() {
       const saved = sessionStorage.getItem('higo_current_user_id');
       if (saved) return saved;
     }
-    return 'a01';
+    return null;
   });
   const [isAdmin, setIsAdmin] = useState<boolean>(() => currentUserId === 'admin');
   const [activeTab, setActiveTab] = useState<'overview' | 'tree' | 'table'>('overview');
