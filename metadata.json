@@ -1,0 +1,7 @@
+{
+  "name": "higo",
+  "description": "higo - 바이너리 MLM 조직 관리 및 산하 좌/우측 회원 정보·매출 조회 시스템",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
