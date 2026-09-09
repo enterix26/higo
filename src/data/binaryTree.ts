@@ -118,23 +118,7 @@ export function getGeneration(index: number): number {
 const SURNAMES = ['김', '이', '박', '최', '정', '강', '조', '윤', '장', '임', '한', '오', '서', '신', '권', '황', '안', '송', '전', '홍'];
 const GIVEN_NAMES = ['민준', '서준', '도윤', '예준', '시우', '하준', '주원', '지호', '지후', '준서', '서연', '서윤', '지우', '서현', '하은', '하윤', '민서', '지아', '윤서', '채원', '태현', '동현', '승우', '진우', '성민', '상훈', '유진', '수빈', '다은', '혜원'];
 
-const KEY_LEADERS: Record<number, { name: string; phone: string; sales: number; memo: string; higoId?: string }> = {
-  1: { name: '강현우 (총괄)', phone: '010-3841-1001', sales: 0, memo: 'higo 최고 탑마스터 / 전국 총괄 네트워크', higoId: 'higo_top' },
-  2: { name: '김태진 (좌측본부장)', phone: '010-5521-2002', sales: 0, memo: '좌측 1라인 총괄 리더 / 수도권 사업단', higoId: 'higo_left' },
-  3: { name: '이서연 (우측본부장)', phone: '010-4492-3003', sales: 0, memo: '우측 2라인 총괄 리더 / 영남 사업단', higoId: 'higo_right' },
-  4: { name: '박민규 (이사)', phone: '010-8812-4004', sales: 0, memo: '강남 센터장 / 직속 2대 육성', higoId: 'higo_gangnam' },
-  5: { name: '최윤아 (이사)', phone: '010-7731-5005', sales: 0, memo: '인천 지사 리더', higoId: 'higo_incheon' },
-  6: { name: '정도현 (이사)', phone: '010-6649-6006', sales: 0, memo: '부산 해운대 센터장', higoId: 'higo_busan' },
-  7: { name: '한지민 (이사)', phone: '010-9923-7007', sales: 0, memo: '대구 수성 사업단', higoId: 'higo_daegu' },
-  8: { name: '윤상혁', phone: '010-2213-8008', sales: 0, memo: '팀빌딩 전문 리더', higoId: 'higo_a08' },
-  9: { name: '임수정', phone: '010-3341-9009', sales: 0, memo: '글로벌 라인 확장', higoId: 'higo_a09' },
-  10: { name: '오세훈', phone: '010-4452-1010', sales: 0, memo: '월 매출 1억 목표', higoId: 'higo_a10' },
-  11: { name: '신아라', phone: '010-5563-1011', sales: 0, memo: '온라인 마케팅 주력', higoId: 'higo_a11' },
-  12: { name: '조광민', phone: '010-6674-1012', sales: 0, memo: '광주 전남 지사장', higoId: 'higo_a12' },
-  13: { name: '송하늘', phone: '010-7785-1013', sales: 0, memo: '대전 충청 라인', higoId: 'higo_a13' },
-  14: { name: '전우진', phone: '010-8896-1014', sales: 0, memo: '울산 경남 라인', higoId: 'higo_a14' },
-  15: { name: '안유리', phone: '010-9907-1015', sales: 0, memo: '신규 에이전트 육성', higoId: 'higo_a15' },
-};
+const KEY_LEADERS: Record<number, { name: string; phone: string; sales: number; memo: string; higoId?: string }> = {};
 
 function generateDeterministicInfo(index: number) {
   const defaultHigoId = `higo_${formatId(index)}`;
